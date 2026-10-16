@@ -1,0 +1,406 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Transit Buddy API - Integrated with data.go.th",
+    "description": "API สำหรับระบบ Transit Buddy (เพื่อนแท้การเดินทาง) ที่ดึงและประมวลผลข้อมูลขนส่งสาธารณะจาก Open Data ภาครัฐ (data.go.th) คำนวณเส้นทาง Step-by-Step พร้อมคู่มือเดินเท้าเข้าซอย และทางเลือกการเดินทางสำรอง",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Transit Buddy Backend API Server"
+    },
+    {
+      "url": "https://api.data.go.th/gov/opendata",
+      "description": "Open Government Data API Gateway (data.go.th)"
+    }
+  ],
+  "paths": {
+    "/open-data/data-goth/fetch-transit-routes": {
+      "get": {
+        "summary": "ดึงข้อมูลระบบขนส่งสาธารณะจาก data.go.th",
+        "description": "เชื่อมต่อไปยัง api.data.go.th เพื่อดึง Dataset ข้อมูลสายรถประจำทาง ตำแหน่งป้ายหยุดรถ และตารางค่าโดยสารจากภาครัฐ (สนข. / ขสมก. / กรมการขนส่งทางบก)",
+        "parameters": [
+          {
+            "name": "dataset_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "default": "bmta-bus-routes-and-stops"
+            },
+            "description": "รหัส Dataset บน data.go.th"
+          },
+          {
+            "name": "api_key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Data.go.th User API Key"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ดึงข้อมูล Open Data จาก data.go.th สำเร็จ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataGoThTransitResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "ไม่สามารถเชื่อมต่อกับ data.go.th ได้"
+          }
+        }
+      }
+    },
+    "/transit-buddy/search-routes": {
+      "post": {
+        "summary": "ค้นหาเส้นทางขนส่งสาธารณะ",
+        "description": "รับข้อมูลจุดเริ่มต้นและจุดหมาย (ดึงพิกัดอัตโนมัติจากหน้าร้าน Michelin / หน้าเปรียบเทียบ หรือผู้ใช้พิมพ์เอง) เพื่อคำนวณเส้นทางจากข้อมูล Open Data",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteSearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "คำนวณเส้นทางสำเร็จ (แสดงรายการตัวเลือก สายประหยัด / สายทำเวลา หรือข้อความแจ้งเตือนเมื่อไม่พบเส้นทาง)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteSearchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ข้อมูลพิกัดเริ่มต้นหรือปลายทางไม่ถูกต้อง"
+          }
+        }
+      }
+    },
+    "/transit-buddy/routes/{route_id}/details": {
+      "get": {
+        "summary": "แสดงรายละเอียดการเดินทาง Step-by-Step และคู่มือเดินเท้า",
+        "description": "ดึงรายละเอียดขั้นตอนการเดินทางทั้งหมด อัตราค่าโดยสารประเมิน และคู่มือเดินเท้าเข้าซอยไปยังจุดหมายปลายทาง (ตามที่ระบุใน Diagram)",
+        "parameters": [
+          {
+            "name": "route_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "รหัสเส้นทางที่ผู้ใช้เลือก"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ดึงรายละเอียดการเดินทางและคู่มือเดินเท้าสำเร็จ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteDetailResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ไม่พบรหัสเส้นทางที่ระบุ"
+          }
+        }
+      }
+    },
+    "/transit-buddy/alternative-options": {
+      "post": {
+        "summary": "ดึงข้อมูลทางเลือกอื่น (กรณีไม่พบรถสาธารณะ)",
+        "description": "ระบบแสดงข้อความแจ้งเตือนและแนะนำทางเลือกอื่น เช่น แท็กซี่ หรือแอปเรียกรถ พร้อมประมาณการค่าโดยสาร",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlternativeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "แสดงข้อมูลทางเลือกการเดินทางสำรองสำเร็จ",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlternativeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DataGoThTransitResponse": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "success"
+          },
+          "source": {
+            "type": "string",
+            "example": "data.go.th - สำนักงานนโยบายและแผนการขนส่งและจราจร (สนข.)"
+          },
+          "total_records": {
+            "type": "integer",
+            "example": 150
+          },
+          "bus_lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "route_number": {
+                  "type": "string",
+                  "example": "สาย 137"
+                },
+                "origin_stop": {
+                  "type": "string",
+                  "example": "วงกลมรามคำแหง"
+                },
+                "destination_stop": {
+                  "type": "string",
+                  "example": "รัชดาภิเษก"
+                },
+                "fare_rate": {
+                  "type": "number",
+                  "example": 15.0
+                }
+              }
+            }
+          }
+        }
+      },
+      "LocationPoint": {
+        "type": "object",
+        "required": ["latitude", "longitude"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "ร้านอาหารมิชลิน สุขุมวิท"
+          },
+          "latitude": {
+            "type": "number",
+            "format": "double",
+            "example": 13.736717
+          },
+          "longitude": {
+            "type": "number",
+            "format": "double",
+            "example": 100.5604
+          }
+        }
+      },
+      "RouteSearchRequest": {
+        "type": "object",
+        "required": ["origin", "destination"],
+        "properties": {
+          "is_auto_destination": {
+            "type": "boolean",
+            "description": "true หากดึงพิกัดปลายทางมาจากหน้าร้านมิชลิน/หน้าเปรียบเทียบอัตโนมัติ",
+            "example": true
+          },
+          "origin": {
+            "$ref": "#/components/schemas/LocationPoint"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/LocationPoint"
+          }
+        }
+      },
+      "TransitOption": {
+        "type": "object",
+        "properties": {
+          "route_id": {
+            "type": "string",
+            "example": "ROUTE_OPT_001"
+          },
+          "category": {
+            "type": "string",
+            "enum": ["สายประหยัด", "สายทำเวลา"],
+            "example": "สายประหยัด"
+          },
+          "total_fare": {
+            "type": "number",
+            "example": 23.0
+          },
+          "estimated_time_minutes": {
+            "type": "integer",
+            "example": 35
+          },
+          "description": {
+            "type": "string",
+            "example": "นั่งรถเมล์สาย 137 แล้วต่อ MRT สถานีศูนย์วัฒนธรรม"
+          }
+        }
+      },
+      "RouteSearchResponse": {
+        "type": "object",
+        "properties": {
+          "found_public_transit": {
+            "type": "boolean",
+            "description": "ผลการคำนวณว่าพบเส้นทางรถสาธารณะหรือไม่ (ตรงกับกล่องเงื่อนไขใน Diagram)",
+            "example": true
+          },
+          "route_options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransitOption"
+            }
+          },
+          "fallback_notice": {
+            "type": "string",
+            "description": "กรณีไม่พบเส้นทาง แสดงข้อความเตือนให้ใช้ทางเลือกอื่น",
+            "example": "ไม่พบเส้นทางรถสาธารณะในบริเวณนี้ แนะนำให้เลือกใช้แท็กซี่หรือแอปเรียกรถ"
+          }
+        }
+      },
+      "StepDetail": {
+        "type": "object",
+        "properties": {
+          "step_number": {
+            "type": "integer",
+            "example": 1
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["BUS", "MRT", "BTS", "WALK", "BOAT"],
+            "example": "BUS"
+          },
+          "title": {
+            "type": "string",
+            "example": "ขึ้นรถประจำทาง สาย 137 จากป้ายหน้าห้างสรรพสินค้า"
+          },
+          "from_station": {
+            "type": "string",
+            "example": "ป้ายรถเมล์หน้าเดอะมอลล์"
+          },
+          "to_station": {
+            "type": "string",
+            "example": "ป้ายรถเมล์แยกอโศก"
+          },
+          "fare": {
+            "type": "number",
+            "example": 15.0
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "example": 20
+          },
+          "data_source": {
+            "type": "string",
+            "example": "Data.go.th - องค์การขนส่งมวลชนกรุงเทพ (ขสมก.)"
+          }
+        }
+      },
+      "WalkingGuide": {
+        "type": "object",
+        "properties": {
+          "distance_meters": {
+            "type": "number",
+            "example": 250.0
+          },
+          "estimated_walk_minutes": {
+            "type": "integer",
+            "example": 4
+          },
+          "instructions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "ลงจากป้ายรถเมล์แล้วเดินมุ่งหน้าไปทางทิศเหนือ 50 เมตร",
+              "เลี้ยวซ้ายเข้าซอยสุขุมวิท 21/1",
+              "เดินตรงเข้าซอยประมาณ 200 เมตร จุดหมายจะอยู่ทางขวามือ"
+            ]
+          }
+        }
+      },
+      "RouteDetailResponse": {
+        "type": "object",
+        "properties": {
+          "route_id": {
+            "type": "string",
+            "example": "ROUTE_OPT_001"
+          },
+          "total_estimated_price": {
+            "type": "number",
+            "example": 23.0
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StepDetail"
+            }
+          },
+          "walking_guide_to_destination": {
+            "$ref": "#/components/schemas/WalkingGuide"
+          }
+        }
+      },
+      "AlternativeRequest": {
+        "type": "object",
+        "properties": {
+          "origin": {
+            "$ref": "#/components/schemas/LocationPoint"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/LocationPoint"
+          }
+        }
+      },
+      "AlternativeResponse": {
+        "type": "object",
+        "properties": {
+          "alert_message": {
+            "type": "string",
+            "example": "ไม่พบเส้นทางรถสาธารณะที่สามารถเดินทางได้ในช่วงเวลานี้"
+          },
+          "recommended_options": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "service_type": {
+                  "type": "string",
+                  "example": "แท็กซี่สาธารณะ / แอปเรียกรถ (Grab, Bolt)"
+                },
+                "estimated_fare_range": {
+                  "type": "string",
+                  "example": "80 - 120 บาท"
+                },
+                "estimated_travel_time": {
+                  "type": "string",
+                  "example": "15 นาที"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
